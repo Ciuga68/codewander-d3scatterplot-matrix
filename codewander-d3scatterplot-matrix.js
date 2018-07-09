@@ -32,35 +32,11 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 					settings:{
 						uses: "settings",
 						items:{
-						transitionDuration:{
-						ref:"transitionDuration",
-						label: "Transition Duration (milliseconds)",
-						type: "string",
-						defaultValue:"500"						
-						},
-						playLabel:{
-						ref:"playLabel",
-						label: "Play button label",
-						type: "string",
-						defaultValue:"Play"						
-						},
-						pauseLabel:{
-						ref:"pauseLabel",
-						label: "Pause button label",
-						type: "string",
-						defaultValue:"Pause"						
-						},
-						maxBubbleSize:{
-						ref:"maxBubbleSize",
-						label: "Max Bubble Size",
-						type: "string",
-						defaultValue:"50"						
-						},
-						ScrollZoom:{
+						Scroll:{
 						type: "boolean",
 						component: "switch",
-						label: "Enable Scroll Zoom",
-						ref: "scrollZoom",
+						label: "Enable Scroll",
+						ref: "enableScroll",
 						options: [{
 							value: true,
 							label: "Yes"
@@ -68,15 +44,19 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 							value: false,
 							label: "No"
 						}],
-						defaultValue: true					
+						defaultValue: false					
 						},
-						DisplayModeBar:{
+						plotSize:{
+						ref:"plotSize",
+						label: "Plot Size (px) - When scroll enabled",
 						type: "string",
-						component: "dropdown",
-						label: "Display Mode Bar",
-						ref: "displayModeBar",
-						options: [{value:'1',label:'Always'},{value:'0',label:'on Hover'},{value:'-1',label:'Never'}],
-						defaultValue:'0'
+						defaultValue:"230"						
+						},
+						circleRadius:{
+						ref:"circleRadius",
+						label: "Circle Radius",
+						type: "string",
+						defaultValue:"4"						
 						}
 						}
 					
@@ -103,6 +83,7 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 				var max_z=1;
 				var dataMatrix=[];
 				var cols=[];
+				
 				var dimensions_count= this.$scope.layout.qHyperCube.qDimensionInfo.length;
 				var measures_count=this.$scope.layout.qHyperCube.qMeasureInfo.length;
 				$(self.$element[0]).empty();
@@ -146,9 +127,13 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 				 	$.each(cols,function(col_index,col){
 						data[index][col]= col_index<= dimensions_count-1 ? item[col_index].qText : item[col_index].qNum;
 						if (col_index<= dimensions_count-1){
-							if(qElemNumber[col_index]==null)qElemNumber[col_index]={};
-							qElemNumber[col_index][item[col_index].qText]=item[col_index].qElemNumber;
+							//if(qElemNumber[col_index]==null)qElemNumber[col_index]={};
+							data[index][col+"qElem"]=item[col_index].qElemNumber
+							//qElemNumber[col_index][item[col_index].qText]=item[col_index].qElemNumber;
 						}
+						
+						data[index][col+"display"]= item[col_index].qText;						
+						
 					})
 				 })
 				 return data;
@@ -157,9 +142,26 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 			
 				function render(data){
 				
+				
 				var width = self.$element[0].clientWidth,
 					size = (self.$element[0].clientHeight/(measures_count))*.90 ,
 					padding = 20;
+									
+					
+				if (self.$scope.layout.enableScroll){
+					width= self.$element[0].clientWidth;
+					size= self.$scope.layout.plotSize;	
+					$(self.$element[0]).addClass("enableScroll");
+					$(self.$element[0]).removeClass("disableScroll");
+					
+				}
+				else
+				{
+					$(self.$element[0]).addClass("disableScroll");	
+					$(self.$element[0]).removeClass("enableScroll");	
+					
+				}
+				var circle_radius= self.$scope.layout.circleRadius;
 
 				var x = d3.scale.linear()
 					.range([padding / 2, size - padding / 2]);
@@ -184,9 +186,10 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 				  console.log(data);
 
 				  var domainByTrait = {},
-					  traits = d3.keys(data[0]).filter(function(d) { return d !== cols[0]; }),
+					  traits = d3.keys(data[0]).filter(function(d) { return d !== cols[0] && cols.indexOf(d)>-1; }),
 					  n = traits.length;
 
+				 
 				  traits.forEach(function(trait) {
 					domainByTrait[trait] = d3.extent(data, function(d) { return d[trait]; });
 				  });
@@ -197,26 +200,26 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 				  var svg = d3.select(self.$element[0]).append("svg")
 					  .attr("width", size * n + padding)
 					  .attr("height", size * n + padding)
-					.append("g")
+					  .append("g")
 					  .attr("transform", "translate(" + padding + "," + padding / 2 + ")");
 
 				  svg.selectAll(".x.axis")
 					  .data(traits)
-					.enter().append("g")
+					  .enter().append("g")
 					  .attr("class", "x axis")
 					  .attr("transform", function(d, i) { return "translate(" + (n - i - 1) * size + ",0)"; })
 					  .each(function(d) { x.domain(domainByTrait[d]); d3.select(this).call(xAxis); });
 
 				  svg.selectAll(".y.axis")
 					  .data(traits)
-					.enter().append("g")
+					  .enter().append("g")
 					  .attr("class", "y axis")
 					  .attr("transform", function(d, i) { return "translate(0," + i * size + ")"; })
 					  .each(function(d) { y.domain(domainByTrait[d]); d3.select(this).call(yAxis); });
 
 				  var cell = svg.selectAll(".cell")
 					  .data(cross(traits, traits))
-					.enter().append("g")
+					  .enter().append("g")
 					  .attr("class", "cell")
 					  .attr("transform", function(d) { return "translate(" + (n - d.i - 1) * size + "," + d.j * size + ")"; })
 					  .each(plot);
@@ -229,6 +232,7 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 					  .text(function(d) { return d.x; });
 
 				  function plot(p) {
+					var div = d3.select(self.$element[0]).append("div").attr("class", "toolTip");
 					var cell = d3.select(this);
 
 					x.domain(domainByTrait[p.x]);
@@ -246,8 +250,27 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 					  .enter().append("circle")
 						.attr("cx", function(d) { return x(d[p.x]); })
 						.attr("cy", function(d) { return y(d[p.y]); })
-						.attr("r", 4)
-						.style("fill", function(d) { return color(d[cols[0]]); });
+						.attr("r", circle_radius)
+						.style("fill", function(d) { return color(d[cols[0]]); })
+						.on("mousemove", function(d){
+							div.style("left", d3.event.offsetX+"px");
+							div.style("top", d3.event.offsetY+"px");
+							div.style("display", "inline-block");
+							var t="";
+							for (var key in d) {
+									if (d.hasOwnProperty(key) && d.hasOwnProperty(key+"display")) {
+										t=t+key + " : " + d[key+"display"]+"<br>";
+									}
+								}							
+							div.html(t);
+						})
+						.on("mouseout", function(d){
+							div.style("display", "none");
+						});	
+						
+					
+					
+					
 				  }
 				//});
 
