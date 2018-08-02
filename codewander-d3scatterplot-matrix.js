@@ -83,10 +83,11 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 				var max_z=1;
 				var dataMatrix=[];
 				var cols=[];
+				var sel_arr=[];
 				
 				var dimensions_count= this.$scope.layout.qHyperCube.qDimensionInfo.length;
 				var measures_count=this.$scope.layout.qHyperCube.qMeasureInfo.length;
-				$(self.$element[0]).empty();
+				$($(self.$element[0]).find('#myDiv')[0]).empty();
 				$.each(this.$scope.layout.qHyperCube.qDimensionInfo,function(index,item){
 				 	cols.push((item.title !=null && item.title!="")?item.title : item.qFallbackTitle);					
 				});
@@ -128,7 +129,7 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 						data[index][col]= col_index<= dimensions_count-1 ? item[col_index].qText : item[col_index].qNum;
 						if (col_index<= dimensions_count-1){
 							//if(qElemNumber[col_index]==null)qElemNumber[col_index]={};
-							data[index][col+"qElem"]=item[col_index].qElemNumber
+							data[index]["qElem"]=item[col_index].qElemNumber
 							//qElemNumber[col_index][item[col_index].qText]=item[col_index].qElemNumber;
 						}
 						
@@ -196,8 +197,15 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 
 				  xAxis.tickSize(size * n);
 				  yAxis.tickSize(-size * n);
+				  
+				  var brush = d3.svg.brush()
+				  .x(x)
+				  .y(y)
+				  .on("brushstart", brushstart)
+				  .on("brush", brushmove)
+				  .on("brushend", brushend);
 
-				  var svg = d3.select(self.$element[0]).append("svg")
+				  var svg = d3.select(self.$element[0]).select("#myDiv").append("svg")
 					  .attr("width", size * n + padding)
 					  .attr("height", size * n + padding)
 					  .append("g")
@@ -217,21 +225,21 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 					  .attr("transform", function(d, i) { return "translate(0," + i * size + ")"; })
 					  .each(function(d) { y.domain(domainByTrait[d]); d3.select(this).call(yAxis); });
 
+				  
+				  
 				  var cell = svg.selectAll(".cell")
 					  .data(cross(traits, traits))
 					  .enter().append("g")
 					  .attr("class", "cell")
 					  .attr("transform", function(d) { return "translate(" + (n - d.i - 1) * size + "," + d.j * size + ")"; })
-					  .each(plot);
-
+					  .each(plot)
 				  // Titles for the diagonal.
 				  cell.filter(function(d) { return d.i === d.j; }).append("text")
 					  .attr("x", padding)
 					  .attr("y", padding)
 					  .attr("dy", ".71em")
 					  .text(function(d) { return d.x; });
-
-				  function plot(p) {
+				function plot(p) {
 					var div = d3.select(self.$element[0]).append("div").attr("class", "toolTip");
 					var cell = d3.select(this);
 
@@ -243,7 +251,11 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 						.attr("x", padding / 2)
 						.attr("y", padding / 2)
 						.attr("width", size - padding)
-						.attr("height", size - padding);
+						.attr("height", size - padding)
+						
+						cell.call(brush)
+					
+						
 
 					cell.selectAll("circle")
 						.data(data)
@@ -267,12 +279,49 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 						.on("mouseout", function(d){
 							div.style("display", "none");
 						});	
-						
-					
-					
-					
 				  }
 				//});
+				var brushCell;
+
+				// Clear the previously-active brush, if any.
+				function brushstart(p) {
+				  if (brushCell !== this) {
+					d3.select(brushCell).call(brush.clear());
+					x.domain(domainByTrait[p.x]);
+					y.domain(domainByTrait[p.y]);
+					brushCell = this;
+				  }
+				}
+			  
+				// Highlight the selected circles.
+				var sel_arr=[];
+				function brushmove(p) {
+				  var e = brush.extent();
+				  self.$scope.selections=[];
+				  svg.selectAll("circle").classed("hidden", function(d) {
+					
+					if (!(e[0][0] > d[p.x] || d[p.x] > e[1][0]
+						|| e[0][1] > d[p.y] || d[p.y] > e[1][1])) 
+						{
+							if ($.inArray(d.qElem, self.$scope.selections)==-1)	self.$scope.selections.push(d.qElem);
+						}
+					return e[0][0] > d[p.x] || d[p.x] > e[1][0]
+						|| e[0][1] > d[p.y] || d[p.y] > e[1][1];
+				  });
+				}
+			  
+				// If the brush is empty, select all circles.
+				function brushend() {
+				  if (brush.empty()) 
+				  {svg.selectAll(".hidden").classed("hidden", false);
+				}
+				else{
+					$('.codewander_select_button').show().delay(5000).fadeOut();
+				}
+
+				}
+			  
+				//cell.each(plot);
 
 				function cross(a, b) {
 				  var c = [], n = a.length, m = b.length, i, j;
@@ -292,30 +341,11 @@ define( ["qlik", "text!./codewander-d3scatterplot-matrix.ng.html", "css!./codewa
 					return Math.round( (val * 100 / $scope.layout.qHyperCube.qMeasureInfo[0].qMax) * 100 ) / 100;
 				};
 				
-				
-				$scope.lastrow = 0;
-				
 				$scope.selections = [];
-				$scope.makeSelection = function (first, second){
-					this.backendApi.selectValues(1,[first],true);
-					this.backendApi.selectValues(2,[second],true);
-					
-				}
-
 				$scope.sel = function ( $event ) {
-					if ( $event.currentTarget.hasAttribute( "data-row" ) ) {
-						var row = parseInt( $event.currentTarget.getAttribute( "data-row" ), 10 ), dim = 0,
-							cell = $scope.$parent.layout.qHyperCube.qDataPages[0].qMatrix[row][0];
-						if ( cell.qIsNull !== true ) {
-							cell.qState = (cell.qState === "S" ? "O" : "S");
-							if ( $scope.selections.indexOf( cell.qElemNumber ) === -1 ) {
-								$scope.selections.push( cell.qElemNumber );
-							} else {
-								$scope.selections.splice( $scope.selections.indexOf( cell.qElemNumber ), 1 );
-							}
-							$scope.selectValues( dim, [cell.qElemNumber], true );
-						}
-					}
+					
+							$scope.selectValues( Number(0), $scope.selections, true );
+						
 				};
 			}]
 		};
